@@ -7,7 +7,8 @@ const cors = require("cors");
 const cookieParser = require("cookie-parser");
 const bcrypt = require("bcrypt");
 const User = require("./model/Schema");
-const Query=require("./model/Query");
+const Query = require("./model/Query");
+const moment = require("moment-timezone");
 
 const corsOptions = {
   origin: true,
@@ -34,19 +35,31 @@ try {
   console.log("Database connection failed");
 }
 
+app.post("/registerUser", async (req, res) => {
+  try {
+    const { name, phone, email, password, address } = req.body;
 
+    // Validation checks
+    if (!name || !phone || !email || !password || !address) {
+      return res
+        .status(422)
+        .json({ error: "Please fill all fields properly." });
+    }
 
+    // Password complexity validation (customize as needed)
+    if (password.length < 6) {
+      return res
+        .status(422)
+        .json({ error: "Password must be at least 6 characters long." });
+    }
 
+    // Check if the email already exists
+    const userExist = await User.findOne({ email });
+    if (userExist) {
+      return res.status(422).json({ error: "Email already exists." });
+    }
 
-app.post("/registerUser", async (req, res) => {                                                    //   REGISTER 
-  const { name, phone, email, password, address } = req.body;
-
-  if (!name || !phone || !email || !password || !address)
-    return res.status(422).json({ error: "Please fill the fields properly ." });
- 
-  User.findOne({ email }).then((userExist) => {
-    if (userExist) return res.status(422).json({ msg: "error" });
-
+    // Create and save the user
     const user = new User({
       name,
       password,
@@ -54,17 +67,18 @@ app.post("/registerUser", async (req, res) => {                                 
       address,
       email,
     });
+    console.log(user);
 
-    user.save();
-    return res.json({ msg: "success" });
-  });
+    await user.save();
+    return res.json({ msg: "Registration successful." });
+  } catch (err) {
+    console.error("Error during registration:", err);
+    return res.status(500).json({ error: "Internal server error." });
+  }
 });
 
-
-
-
-
-app.post("/login", async (req, res) => {                                                               //  LOGIN 
+app.post("/login", async (req, res) => {
+  //  LOGIN
   let token;
   try {
     const { email, password } = req.body;
@@ -97,63 +111,80 @@ app.post("/login", async (req, res) => {                                        
   }
 });
 
-
-
-app.post('/postQuery', async (req, res) => {                    // POST QUERYYYY
-  const { email, content } = req.body;
+app.post("/postQuery", async (req, res) => {
+  // POST QUERYYYY
+  const { email, content, author } = req.body;
 
   try {
     // Create a new Query document
     const newQuery = new Query({
       email,
+      author,
       content,
+      timestamp: new Date(),
     });
 
     const savedQuery = await newQuery.save();
 
     res.status(201).json(savedQuery);
   } catch (error) {
-    console.error('Error posting query:', error);
-    res.status(500).json({ error: 'Error posting query' });
+    console.error("Error posting query:", error);
+    res.status(500).json({ error: "Error posting query" });
   }
 });
 
-
-app.get('/queries', auth, async (req, res) => {
+app.get("/queries", auth, async (req, res) => {
   const { userEmail } = req;
 
   try {
     if (!userEmail) {
-      return res.status(401).json({ error: 'Unauthorized: No email found in token' });
+      return res
+        .status(401)
+        .json({ error: "Unauthorized: No email found in token" });
     }
 
     // Find all queries associated with the user's email
-    const queries = await Query.find({ email: userEmail });
-   
+    const queries = await Query.find({ email: userEmail }).sort({
+      timestamp: -1,
+    });
+
     res.json(queries);
   } catch (error) {
-    console.error('Error fetching queries by email:', error);
-    res.status(500).json({ error: 'Error fetching queries by email' });
+    console.error("Error fetching queries by email:", error);
+    res.status(500).json({ error: "Error fetching queries by email" });
   }
 });
 
+app.get("/allQueries", auth, async (req, res) => {
+  try {
+    // Find all queries
+    const queries = await Query.find().sort({ timestamp: -1 });
 
-app.post('/postComment', auth, async (req, res) => {
+    res.json(queries);
+  } catch (error) {
+    console.error("Error fetching all queries:", error);
+    res.status(500).json({ error: "Error fetching all queries" });
+  }
+});
+
+app.post("/postComment", auth, async (req, res) => {
   const { userName } = req;
   const { userEmail } = req;
   const { comment } = req.body;
-  const { id} = req.body;
+  const { id } = req.body;
 
   try {
     if (!userEmail) {
-      return res.status(401).json({ error: 'Unauthorized: No email found in token' });
+      return res
+        .status(401)
+        .json({ error: "Unauthorized: No email found in token" });
     }
 
     // Find the query by its ID
-    const query = await Query.findOne({ _id:id });
+    const query = await Query.findOne({ _id: id });
 
     if (!query) {
-      return res.status(404).json({ error: 'Query not found' });
+      return res.status(404).json({ error: "Query not found" });
     }
     // console.log(query);
     // Append the new comment to the comments array
@@ -168,12 +199,10 @@ app.post('/postComment', auth, async (req, res) => {
 
     res.json(updatedQuery);
   } catch (error) {
-    console.error('Error posting comment:', error);
-    res.status(500).json({ error: 'Error posting comment' });
+    console.error("Error posting comment:", error);
+    res.status(500).json({ error: "Error posting comment" });
   }
 });
-
-
 
 app.post("/addReview", async (req, res) => {
   const { tutorEmail, userEmail, reviewText } = req.body;
@@ -275,8 +304,6 @@ app.post("/decline", async (req, res) => {
   res.json({ msg: "success" });
 });
 
-
-
 app.get("/findProfileTutor", (req, res) => {
   const { email } = req.query;
 
@@ -294,7 +321,7 @@ app.get("/findProfileTutor", (req, res) => {
 });
 
 app.get("/getAllTutors", (req, res) => {
-  // Use the find method to retrieve all tutors from the database
+  // Use the find method to retrieve all tutors nfrom the database
   User2.find({}, (err, tutors) => {
     if (err) {
       console.error("Error fetching tutors:", err);
@@ -325,7 +352,7 @@ app.get("/getReviewsByTutorEmail", async (req, res) => {
 });
 
 app.get("/getinfo", auth, (req, res) => {
-  res.send(req.rootUser);                   
+  res.send(req.rootUser);
 });
 
 app.get("/logout", (req, res) => {

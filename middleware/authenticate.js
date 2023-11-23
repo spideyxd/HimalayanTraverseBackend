@@ -4,7 +4,7 @@ const User = require("../model/Schema");
 const Authenticate = async (req, res, next) => {
   try {
     const token = req.cookies.jwtoken || null;
-if(!token)return res.status(401).send("Unauthorized: no token provided");
+if(!token)return res.status(401).send("noTokenFoun");
     if (token) {
       const verifyToken = jwt.verify(
         token,
