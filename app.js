@@ -9,12 +9,21 @@ const bcrypt = require("bcrypt");
 const User = require("./model/Schema");
 const Query = require("./model/Query");
 const moment = require("moment-timezone");
+const { z, ZodError } = require('zod');
+const { sheets, SHEET_ID } = require('./sheetClient.js');
+const bodyParser = require("body-parser");
+const fs = require("fs/promises");
+const path = require('path');
+
+
+const filePath = path.resolve(__dirname, '..', 'ht','src', 'data', 'blogs.json');
 
 const corsOptions = {
   origin: true,
   credentials: true,
 };
 
+app.use(bodyParser.json());
 app.use(cors(corsOptions));
 app.use(express.json());
 app.use(cookieParser());
@@ -34,6 +43,41 @@ try {
   console.log(error);
   console.log("Database connection failed");
 }
+const contactFormSchema = z.object({
+  fullName: z.string(),
+  address: z.string(),
+  city: z.string(),
+  zipCode:z.string()
+
+});
+
+app.post("/send-message", async (req, res) => {
+  try {
+    const body = contactFormSchema.parse(req.body);
+
+    // Object to Sheets
+    const rows = Object.values(body);
+    
+
+    await sheets.spreadsheets.values.append({
+      spreadsheetId:
+      SHEET_ID,
+      range: "Data!A:D",
+      insertDataOption: "INSERT_ROWS",
+      valueInputOption: "RAW",
+      requestBody: {
+        values: [rows],
+      },
+    });
+    res.json({ message: "Data added successfully" });
+  } catch (error) {
+    if (error ) {
+      res.status(400).json({ error: error.message });
+    } else {
+      res.status(400).json({ error });
+    }
+  }
+});
 
 app.post("/registerUser", async (req, res) => {
   try {
@@ -204,150 +248,43 @@ app.post("/postComment", auth, async (req, res) => {
   }
 });
 
-app.post("/addReview", async (req, res) => {
-  const { tutorEmail, userEmail, reviewText } = req.body;
-  // console.log(tutorEmail,userEmail,reviewText);
+
+app.post("/addShort", async (req, res) => {
   try {
-    // Find the tutor by email
-    const tutor = await User2.findOne({ email: tutorEmail });
+    const { title, description, location,imgSrc } = req.body;
 
-    if (!tutor) {
-      return res.status(404).json({ error: "Tutor not found" });
+    // Read existing data from the JSON file
+    let existingData;
+    try {
+      existingData = await fs.readFile(filePath, "utf8");
+    } catch (error) {
+      // If the file doesn't exist or is empty, initialize shorts as an empty array
+      existingData = "[]";
     }
 
-    // Add the review to the tutor's data
-    tutor.testimonials.push({ email: userEmail, test: reviewText });
-    await tutor.save();
+    let shorts = JSON.parse(existingData);
 
-    // Find the user by email
-    const user = await User.findOne({ email: userEmail });
-
-    if (!user) {
-      return res.status(404).json({ error: "User not found" });
+    // If shorts is not an array, initialize it as an empty array
+    if (!Array.isArray(shorts)) {
+      shorts = [];
     }
 
-    // Add the review to the user's data
-    user.testimonials.push({ email: tutorEmail, test: reviewText });
-    await user.save();
+    // Add the new short
+    const newShort = {
+      title,
+      description,
+      location,
+      imgSrc
+    };
+    shorts.push(newShort);
 
-    return res.status(200).json({ message: "Review added successfully" });
-  } catch (err) {
-    console.error(err);
-    return res.status(500).json({ error: "Server error" });
-  }
-});
+    // Write the updated data back to the file
+    await fs.writeFile(filePath, JSON.stringify(shorts, null, 2), "utf8");
 
-app.post("/request", async (req, res) => {
-  const { firstName, email, itemEmail } = req.body;
-
-  const mentor = await User2.findOne({ email: itemEmail });
-
-  if (!mentor) {
-    return res.status(404).json({ msg: "Mentor not found" });
-  }
-
-  // Check if the student already exists in the mentor's students array
-  const studentExists = mentor.students.some(
-    (student) => student.email === email
-  );
-
-  if (studentExists) {
-    return res
-      .status(400)
-      .json({ msg: "You have already sent a request to this mentor" });
-  }
-
-  // If the student is not already in the students array, push them.
-  mentor.students.push({ name: firstName, email });
-
-  // Save the updated mentor document
-  mentor
-    .save()
-    .then(() => {
-      res.json({ msg: "Success" });
-    })
-    .catch((error) => {
-      console.error(error);
-      res.status(500).json({ msg: "Internal Server Error" });
-    });
-});
-
-app.post("/deleteReq", async (req, res) => {
-  const { email, name } = req.body;
-
-  User.find({
-    role: "Mentor",
-    "mentors.email": email,
-  }).then((data) => {
-    if (data) {
-      data.map((val) => {
-        User.findOneAndUpdate(
-          { email: val.email },
-          { $pull: { mentors: { name, email } } },
-          { new: true }
-        ).then((dat) => {});
-      });
-    }
-  });
-
-  res.json({ msg: "success" });
-});
-
-app.post("/decline", async (req, res) => {
-  const { email, userEmail } = req.body;
-  console.log(userEmail);
-  const ans = await User.findOneAndUpdate(
-    { email: email },
-    { $pull: { students: { email: userEmail } } },
-    { new: true }
-  );
-  res.json({ msg: "success" });
-});
-
-app.get("/findProfileTutor", (req, res) => {
-  const { email } = req.query;
-
-  // Find the tutor profile by email using the User2 model
-  User2.findOne({ email }, (err, tutorProfile) => {
-    if (err) {
-      console.error("Error fetching tutor profile:", err);
-      res.status(500).json({ error: "Internal server error" });
-    } else if (!tutorProfile) {
-      res.status(404).json({ error: "Tutor not found" });
-    } else {
-      res.json(tutorProfile);
-    }
-  });
-});
-
-app.get("/getAllTutors", (req, res) => {
-  // Use the find method to retrieve all tutors nfrom the database
-  User2.find({}, (err, tutors) => {
-    if (err) {
-      console.error("Error fetching tutors:", err);
-      res.status(500).json({ error: "Internal server error" });
-    } else {
-      res.json(tutors);
-    }
-  });
-});
-
-app.get("/getReviewsByTutorEmail", async (req, res) => {
-  const { email } = req.query;
-
-  try {
-    const tutor = await User2.findOne({ email });
-
-    if (!tutor) {
-      return res.status(404).json({ message: "Tutor not found" });
-    }
-
-    // Assuming reviews are stored as an array in the tutor document
-    const reviews = tutor.testimonials || [];
-    res.status(200).json(reviews);
-  } catch (err) {
-    console.error("Error fetching reviews:", err);
-    res.status(500).json({ message: "Internal server error" });
+    res.status(200).json({ message: "Short added successfully!" });
+  } catch (error) {
+    console.error("Error adding short:", error);
+    res.status(500).json({ error: "Internal Server Error" });
   }
 });
 
