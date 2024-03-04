@@ -8,15 +8,31 @@ const cookieParser = require("cookie-parser");
 const bcrypt = require("bcrypt");
 const User = require("./model/Schema");
 const Query = require("./model/Query");
+const HiddenGem = require("./model/HiddenGems.js");
 const moment = require("moment-timezone");
-const { z, ZodError } = require('zod');
-const { sheets, SHEET_ID } = require('./sheetClient.js');
+const { z, ZodError } = require("zod");
+const { sheets, SHEET_ID } = require("./sheetClient.js");
 const bodyParser = require("body-parser");
 const fs = require("fs/promises");
-const path = require('path');
+const path = require("path");
 
+const filePathShorts = path.resolve(
+  __dirname,
+  "..",
+  "ht",
+  "src",
+  "data",
+  "blogs.json"
+);
 
-const filePath = path.resolve(__dirname, '..', 'ht','src', 'data', 'blogs.json');
+const filePathTreks = path.resolve(
+  __dirname,
+  "..",
+  "ht",
+  "src",
+  "data",
+  "hiddenGems.json"
+);
 
 const corsOptions = {
   origin: true,
@@ -35,6 +51,7 @@ const connectionParams = {
   useNewUrlParser: true,
   useUnifiedTopology: true,
 };
+
 mongoose.set("strictQuery", false);
 try {
   mongoose.connect(process.env.MONGO_URI, connectionParams);
@@ -43,12 +60,12 @@ try {
   console.log(error);
   console.log("Database connection failed");
 }
+
 const contactFormSchema = z.object({
   fullName: z.string(),
   address: z.string(),
   city: z.string(),
-  zipCode:z.string()
-
+  zipCode: z.string(),
 });
 
 app.post("/send-message", async (req, res) => {
@@ -57,11 +74,9 @@ app.post("/send-message", async (req, res) => {
 
     // Object to Sheets
     const rows = Object.values(body);
-    
 
     await sheets.spreadsheets.values.append({
-      spreadsheetId:
-      SHEET_ID,
+      spreadsheetId: SHEET_ID,
       range: "Data!A:D",
       insertDataOption: "INSERT_ROWS",
       valueInputOption: "RAW",
@@ -71,7 +86,7 @@ app.post("/send-message", async (req, res) => {
     });
     res.json({ message: "Data added successfully" });
   } catch (error) {
-    if (error ) {
+    if (error) {
       res.status(400).json({ error: error.message });
     } else {
       res.status(400).json({ error });
@@ -81,10 +96,10 @@ app.post("/send-message", async (req, res) => {
 
 app.post("/registerUser", async (req, res) => {
   try {
-    const { name, phone, email, password, address } = req.body;
+    const { name, email, password } = req.body;
 
     // Validation checks
-    if (!name || !phone || !email || !password || !address) {
+    if (!name || !email || !password) {
       return res
         .status(422)
         .json({ error: "Please fill all fields properly." });
@@ -107,16 +122,47 @@ app.post("/registerUser", async (req, res) => {
     const user = new User({
       name,
       password,
-      phone,
-      address,
       email,
     });
-    console.log(user);
 
     await user.save();
     return res.json({ msg: "Registration successful." });
   } catch (err) {
     console.error("Error during registration:", err);
+    return res.status(500).json({ error: "Internal server error." });
+  }
+});
+
+app.post("/updateProfile", async (req, res) => {
+  try {
+    const { email, ...updatedFields } = req.body;
+
+    // Validation checks (customize as needed)
+    if (!email) {
+      return res.status(422).json({ error: "Email is required." });
+    }
+
+    // Find the user by email
+    const user = await User.findOne({ email });
+
+    if (!user) {
+      return res.status(404).json({ error: "User not found." });
+    }
+
+    for (const [key, value] of Object.entries(updatedFields)) {
+      if (key === "pastTreks" || key === "medicalHistory") {
+        // Assuming both pastTreks and medicalHistory are arrays
+        user[key] = [...value];
+      } else {
+        user[key] = value;
+      }
+    }
+
+    await user.save();
+
+    return res.json({ msg: "Profile updated successfully." });
+  } catch (err) {
+    console.error("Error during profile update:", err);
     return res.status(500).json({ error: "Internal server error." });
   }
 });
@@ -133,6 +179,7 @@ app.post("/login", async (req, res) => {
 
     if (userLogin) {
       const isMatch = await bcrypt.compare(password, userLogin.password);
+
       token = await userLogin.generateAuthToken();
 
       res.cookie("jwtoken", token, {
@@ -248,15 +295,14 @@ app.post("/postComment", auth, async (req, res) => {
   }
 });
 
-
 app.post("/addShort", async (req, res) => {
   try {
-    const { title, description, location,imgSrc } = req.body;
+    const { title, description, location, imgSrc } = req.body;
 
     // Read existing data from the JSON file
     let existingData;
     try {
-      existingData = await fs.readFile(filePath, "utf8");
+      existingData = await fs.readFile(filePathShorts, "utf8");
     } catch (error) {
       // If the file doesn't exist or is empty, initialize shorts as an empty array
       existingData = "[]";
@@ -274,12 +320,12 @@ app.post("/addShort", async (req, res) => {
       title,
       description,
       location,
-      imgSrc
+      imgSrc,
     };
     shorts.push(newShort);
 
     // Write the updated data back to the file
-    await fs.writeFile(filePath, JSON.stringify(shorts, null, 2), "utf8");
+    await fs.writeFile(filePathShorts, JSON.stringify(shorts, null, 2), "utf8");
 
     res.status(200).json({ message: "Short added successfully!" });
   } catch (error) {
@@ -287,6 +333,135 @@ app.post("/addShort", async (req, res) => {
     res.status(500).json({ error: "Internal Server Error" });
   }
 });
+
+app.post("/addTrek", async (req, res) => {
+  try {
+    const { title, description, location, imgSrc, email } = req.body;
+
+    // Create a new HiddenGem instance using the schema
+    const newHiddenGem = new HiddenGem({
+      title,
+      description,
+      location,
+      imgSrc,
+      likeCount: 0,
+      dislikeCount: 0,
+      postedBy: email, // Replace with the actual user or some identifier
+    });
+
+    // Save the new HiddenGem to the database
+    const savedHiddenGem = await newHiddenGem.save();
+
+    res
+      .status(200)
+      .json({ message: "Trek added successfully!", data: savedHiddenGem });
+  } catch (error) {
+    console.error("Error adding trek:", error);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+// Fetch all hidden gems
+app.get("/getAllHiddenGems", async (req, res) => {
+  try {
+    const hiddenGems = await HiddenGem.find({});
+    res.status(200).json({ data: hiddenGems });
+  } catch (error) {
+    console.error("Error fetching hidden gems:", error);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+// app.post('/likeHiddenGem/:gemId', async (req, res) => {
+
+//   const userId = req.body.id; // Assuming you have user information in req.user
+
+// console.log(userId);
+//   try {
+//     const hiddenGem = await HiddenGem.findById(req.params.gemId);
+
+//     if (!hiddenGem) {
+//       return res.status(404).json({ error: 'Hidden gem not found' });
+//     }
+
+//     // Check if the user has already disliked the gem
+//     if (hiddenGem.dislikedBy.includes(userId)) {
+//       // Remove user from dislikedBy array
+//       hiddenGem.dislikedBy = hiddenGem.dislikedBy.filter((id) => id.toString() !== userId);
+//       hiddenGem.dislikeCount--;
+//     }
+
+//     // Check if the user has already liked the gem
+//     if (!hiddenGem.likedBy.includes(userId)) {
+//       // Add user to likedBy array
+//       hiddenGem.likedBy.push(userId);
+//       hiddenGem.likeCount++;
+//     }
+
+//     await hiddenGem.save();
+
+//     res.status(200).json({ message: 'Gem liked successfully', gem: hiddenGem });
+//   } catch (error) {
+//     console.error('Error liking hidden gem:', error);
+//     res.status(500).json({ error: 'Internal Server Error' });
+//   }
+// });
+
+
+const handleLikeDislike = async (req, res, action) => {
+  const userId = req.body.id; // Assuming you have user information in req.user
+
+  try {
+    const hiddenGem = await HiddenGem.findById(req.params.gemId);
+
+    if (!hiddenGem) {
+      return res.status(404).json({ error: 'Hidden gem not found' });
+    }
+
+    // Check if the user has already disliked or liked the gem
+    if (action === 'like' && hiddenGem.likedBy.includes(userId)) {
+      return res.status(400).json({ error: 'User already liked this gem' });
+    } else if (action === 'dislike' && hiddenGem.dislikedBy.includes(userId)) {
+      return res.status(400).json({ error: 'User already disliked this gem' });
+    }
+// Update like and dislike counts based on the action
+if (action === 'like') {
+  hiddenGem.likedBy.push(userId);
+  hiddenGem.likeCount++;
+  
+  // If user was in dislikedBy, decrement dislikeCount
+  if (hiddenGem.dislikedBy.includes(userId)) {
+    hiddenGem.dislikedBy = hiddenGem.dislikedBy.filter((id) => id.toString() !== userId);
+    hiddenGem.dislikeCount--;
+  }
+} else if (action === 'dislike') {
+  hiddenGem.dislikedBy.push(userId);
+  hiddenGem.dislikeCount++;
+
+  // If user was in likedBy, decrement likeCount
+  if (hiddenGem.likedBy.includes(userId)) {
+    hiddenGem.likedBy = hiddenGem.likedBy.filter((id) => id.toString() !== userId);
+    hiddenGem.likeCount--;
+  }
+}
+    await hiddenGem.save();
+
+    res.status(200).json({ message: `Gem ${action}d successfully`, gem: hiddenGem });
+  } catch (error) {
+    console.error(`Error ${action}ing hidden gem:`, error);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+};
+
+app.post('/likeHiddenGem/:gemId', async (req, res) => {
+  handleLikeDislike(req, res, 'like');
+});
+
+app.post('/dislikeHiddenGem/:gemId', async (req, res) => {
+  handleLikeDislike(req, res, 'dislike');
+});
+
+
 
 app.get("/getinfo", auth, (req, res) => {
   res.send(req.rootUser);

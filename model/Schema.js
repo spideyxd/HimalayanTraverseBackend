@@ -11,20 +11,50 @@ const UserSchema = new mongoose.Schema({
     type: String,
     required: true,
   },
-  phone:{
-    type:String,
-    required:true
+  phone: {
+    type: String,
+    default: 'N/A',
   },
   address: {
     type: String,
-    required: true,
+    default: 'N/A',
   },
   email: {
-    // unique:true,
     type: String,
     required: true,
   },
-
+  sex: {
+    type: String,
+    default: 'N/A',
+  },
+  age: {
+    type: Number,
+    default: 0,
+  },
+  bio: {
+    type: String,
+    default: 'N/A',
+  },
+  profilePicture: {
+    type: Buffer,
+    default: Buffer.from(''),
+  },
+  experienceLevel: {
+    type: String,
+    default: 'N/A',
+  },
+  medicalHistory: [
+    {
+      type: String,
+      default: 'N/A',
+    },
+  ],
+  pastTreks: [
+    {
+      type: String,
+      default: 'N/A',
+    },
+  ],
   tokens: [
     {
       token: {
@@ -34,6 +64,7 @@ const UserSchema = new mongoose.Schema({
     },
   ],
 });
+
 
 UserSchema.pre("save", async function (next) {
   if (this.isModified("password")) {
