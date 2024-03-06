@@ -202,6 +202,43 @@ app.post("/login", async (req, res) => {
   }
 });
 
+
+app.post("/Googlelogin", async (req, res) => {
+  try {
+    const { email } = req.body;
+    console.log(email);
+    
+    if (!email) {
+      return res.status(400).json({ msg: "Email is required" });
+    }
+
+    const userLogin = await User.findOne({ email: email });
+
+    if (userLogin) {
+      // Generate and set the token
+      const token = await userLogin.generateAuthToken();
+
+      // Set the token in the cookie
+      res.cookie("jwtoken", token, {
+        sameSite: "none",
+        secure: true,
+        expires: new Date(Date.now() + 25892000000),
+        httpOnly: false,
+      });
+
+      // Return success
+      res.json({ msg: "success" });
+    } else {
+      // Return error if email is not found
+      res.status(400).json({ msg: "error" });
+    }
+  } catch (err) {
+    console.log(err);
+    res.status(500).json({ msg: "Server Error" });
+  }
+});
+
+
 app.post("/postQuery", async (req, res) => {
   // POST QUERYYYY
   const { email, content, author } = req.body;
