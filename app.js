@@ -25,14 +25,6 @@ const filePathShorts = path.resolve(
   "blogs.json"
 );
 
-const filePathTreks = path.resolve(
-  __dirname,
-  "..",
-  "ht",
-  "src",
-  "data",
-  "hiddenGems.json"
-);
 
 const corsOptions = {
   origin: true,
@@ -66,18 +58,20 @@ const contactFormSchema = z.object({
   address: z.string(),
   city: z.string(),
   zipCode: z.string(),
+  quantity: z.number(), // Assuming quantity is a number
+  rentalDays: z.number(), // Assuming days is a number
+  currentDate: z.string(), // Assuming currentDate is a string (e.g., date in a specific format)
 });
-
 app.post("/send-message", async (req, res) => {
   try {
     const body = contactFormSchema.parse(req.body);
 
     // Object to Sheets
     const rows = Object.values(body);
-
+    // console.log(body);
     await sheets.spreadsheets.values.append({
       spreadsheetId: SHEET_ID,
-      range: "Data!A:D",
+      range: "Data!A:F",
       insertDataOption: "INSERT_ROWS",
       valueInputOption: "RAW",
       requestBody: {
@@ -85,6 +79,7 @@ app.post("/send-message", async (req, res) => {
       },
     });
     res.json({ message: "Data added successfully" });
+
   } catch (error) {
     if (error) {
       res.status(400).json({ error: error.message });
