@@ -21,6 +21,7 @@
     "jsonwebtoken": "^8.5.1",
     "moment-timezone": "^0.5.43",
     "mongoose": "^6.7.2",
+    "socket.io": "^4.7.5",
     "zod": "^3.22.4"
   }
 }
