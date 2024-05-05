@@ -378,6 +378,8 @@ app.post("/postFindingBuddy", async (req, res) => {
       timestamp: new Date(),
     });
 
+    console.log(newQuery);
+
     const savedQuery = await newQuery.save();
 
     res.status(201).json(savedQuery);
