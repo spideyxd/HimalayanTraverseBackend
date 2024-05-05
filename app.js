@@ -10,7 +10,6 @@ const bcrypt = require("bcrypt");
 const User = require("./model/Schema");
 const FindingBuddy = require("./model/FindingBuddy");
 const Query = require("./model/Query");
-const Message = require("./model/Message");
 const HiddenGem = require("./model/HiddenGems.js");
 
 const moment = require("moment-timezone");
@@ -136,7 +135,7 @@ io.on("connection", (socket) => {
       // Create a message object using the message schema
       const newMessage = {
         senderId: sender._id, // Set the sender ID
-        name:sender.name ,
+        name: sender.name,
         content: messageData.content, // Set the message content
         timestamp: new Date(), // Set the current timestamp
         read: false, // Initially mark the message as unread
@@ -150,7 +149,7 @@ io.on("connection", (socket) => {
         // If no conversation exists, create a new one
         conversation = {
           participantId: recipient._id,
-          name:recipient.name, // Set the participant ID to the sender's ID
+          name: recipient.name, // Set the participant ID to the sender's ID
           messages: [], // Initialize an empty array of messages
         };
         sender.conversations.push(conversation); // Add the new conversation to the recipient's conversations array
@@ -173,7 +172,12 @@ io.on("connection", (socket) => {
   });
 });
 
+
 // NON SOCKET APIS
+
+
+
+
 
 app.post("/send-message", async (req, res) => {
   try {
@@ -378,7 +382,7 @@ app.post("/postFindingBuddy", async (req, res) => {
       timestamp: new Date(),
     });
 
-    console.log(newQuery);
+    
 
     const savedQuery = await newQuery.save();
 
@@ -453,10 +457,28 @@ app.post("/addInterestedUser", async (req, res) => {
   }
 });
 
+
+app.get('/openDashboard/:notificationId', async (req, res) => {
+  const { notificationId } = req.params;
+
+  try {
+    const notificationUser = await User.findById(notificationId);
+    
+    if (!notificationUser) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    res.json(notificationUser);
+  } catch (error) {
+    console.error('Error finding user by ID:', error);
+    res.status(500).json({ error: 'An error occurred while finding user by ID' });
+  }
+});
+
 app.post("/addNotificationAsConversation/:notificationId", async (req, res) => {
   try {
     const { notificationId } = req.params;
-    const { user } = req.body;
+    const { user } = req.body; 
 
     // Find the users based on the provided user data
 
@@ -485,7 +507,7 @@ app.post("/addNotificationAsConversation/:notificationId", async (req, res) => {
       // Create a new conversation object for the user
       const newConversationForUser = {
         participantId: notificationUser._id,
-        name:notificationUser.name,
+        name: notificationUser.name,
         messages: [],
       };
 
@@ -497,7 +519,7 @@ app.post("/addNotificationAsConversation/:notificationId", async (req, res) => {
       // Create a new conversation object for the notification user
       const newConversationForNotificationUser = {
         participantId: user_email._id,
-        name:user_email.name,
+        name: user_email.name,
         messages: [],
       };
 
@@ -505,8 +527,6 @@ app.post("/addNotificationAsConversation/:notificationId", async (req, res) => {
       notificationUser.conversations.push(newConversationForNotificationUser);
     }
 
-    console.log(user_email);
-    console.log(notificationUser);
     // Save the updated user documents
     await user_email.save();
     await notificationUser.save();
@@ -540,17 +560,16 @@ app.post("/messages", async (req, res) => {
 
     // Extract and merge messages from both users' conversations
     const currentUserMessages = currentUser
-    ? currentUser.conversations.find((conv) =>
-        conv.participantId.equals(otherUserId)
-      )?.messages || []
-    : [];
-  
-  const otherUserMessages = otherUser
-    ? otherUser.conversations.find((conv) =>
-        conv.participantId.equals(currentUserId)
-      )?.messages || []
-    : [];
-  
+      ? currentUser.conversations.find((conv) =>
+          conv.participantId.equals(otherUserId)
+        )?.messages || []
+      : [];
+
+    const otherUserMessages = otherUser
+      ? otherUser.conversations.find((conv) =>
+          conv.participantId.equals(currentUserId)
+        )?.messages || []
+      : [];
 
     const allMessages = [...currentUserMessages, ...otherUserMessages];
 
